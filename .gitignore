@@ -1,2 +1,3 @@
+.vscode/*
 pcap/*
-test_*
+test/*

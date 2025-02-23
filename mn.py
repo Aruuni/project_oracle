@@ -9,8 +9,12 @@ import time, re, os
 
 def get_tcp_retransmissions(host):
     """
-    Run 'netstat -s' on the given host and parse the output to find
-    how many TCP segments have been retransmitted so far.
+    journalctl -f | grep "MODULE: "
+    journalctl -f | grep "KERNEL: "
+    sudo python3 mn.py
+
+
+
     """
     output = host.cmd("netstat -s")
     # Typical line looks like: "    342 segments retransmited"
@@ -34,24 +38,31 @@ def simple_test():
     info("*** Attaching custom qdisc 'oracle' to h1's interface\n")
     #h1.cmd("sudo tc qdisc del dev s1-eth1 root 2>/dev/null")
     # Attach the custom queue discipline (ensure your module is loaded)
-    s1.cmd("sudo tc qdisc add dev s1-eth1 root handle 1: oracle ")
-    s1.cmd("sudo tc qdisc add dev s1-eth2 root handle 1: oracle ")
+    # Add netem as the root qdisc on s1-eth1 with a 20ms delay and limit of 15000 packets.
+    s1.cmd("sudo tc qdisc add dev s1-eth2 root handle 10: netem delay 10ms limit 15000")
+
+    # Attach oracle as a child of netem. The parent's handle is specified via "parent".
+    s1.cmd("sudo tc qdisc add dev s1-eth1 root handle 1: tbf rate 20mbit burst 32kbit limit 30000")
+    s1.cmd("sudo tc qdisc add dev s1-eth1 parent 1: oracle")
+    # s1.cmd("sudo tc qdisc add dev s1-eth1 root handle 1: oracle ")
+    #s1.cmd("sudo tc qdisc add dev s1-eth2 root handle 1: oracle ")
 
     info("*** Starting tcpdump on both hosts, saving pcaps in current folder\n")
     h1.cmd("tcpdump -i h1-eth0 -w pcap/h1_current.pcap tcp &")
     h2.cmd("tcpdump -i h2-eth0 -w pcap/h2_current.pcap tcp &")
-    s1.cmd("tcpdump -i s1-eth1 -w pcap/s1_eth0_current.pcap tcp &")
-    s1.cmd("tcpdump -i s1-eth2 -w pcap/s1_eth1_current.pcap tcp &")
+    s1.cmd("tcpdump -i s1-eth1 -w pcap/s1_eth1_current.pcap tcp &")
+    s1.cmd("tcpdump -i s1-eth2 -w pcap/s1_eth2_current.pcap tcp &")
     info("*** Starting iperf server on h2 (port 5001)\n")
     # Start iperf in server mode on h2 in the background
-    h2.cmd("iperf3 -s -i 0.1 --one-off -p 5001 > test_server &")
+    h2.cmd("iperf3 -s -i 0.1 --one-off -p 5001 > test/test_server &")
     time.sleep(1)  # Give the server time to start
 
     info("*** Running iperf client on h1 to send 1 MB of TCP traffic to h2\n")
     # Use iperf client on h1 to send 1MB of data to h2
     # The '-n 1M' option tells iperf to send 1 megabyte of data.
-    h1.cmd("iperf3 -c {} -p 5001 -i 0.1 -t 2 > test_client".format(h2.IP()))
-    s1.cmd("sudo tc -s qdisc show > test_qdisc_output")
+    # h1.cmd("iperf3 -c {} -p 5001 -n 1500K -i 0.1 -C snap > test/test_client".format(h2.IP()))
+    h1.cmd("iperf3 -c {} -p 5001 -t 10 -i 1 -C snap  > test/test_client".format(h2.IP()))
+    s1.cmd("sudo tc -s qdisc show > test/test_qdisc_output")
     #CLI(net)
     retrans = get_tcp_retransmissions(h1)
     retranss1 = get_tcp_retransmissions(s1)
