@@ -1,0 +1,52 @@
+diff --git a/include/linux/tcp.h b/include/linux/tcp.h
+index 40e08abc6aa1..48d3ff74bd28 100644
+--- a/include/linux/tcp.h
++++ b/include/linux/tcp.h
+@@ -1,4 +1,4 @@
+-/* SPDX-License-Identifier: GPL-2.0-or-later */
++:/* SPDX-License-Identifier: GPL-2.0-or-later */
+ /*
+  * INET		An implementation of the TCP/IP protocol suite for the LINUX
+  *		operating system.  INET is implemented using the  BSD Socket
+@@ -172,6 +172,13 @@ static inline struct tcp_request_sock *tcp_rsk(const struct request_sock *req)
+ 	return (struct tcp_request_sock *)req;
+ }
+ 
++/* Oracle tag */
++struct oracle_tag {
++	u64 rate;
++	u32 backlog;
++	u32 flows;
++};
++
+ struct tcp_sock {
+ 	/* inet_connection_sock has to be the first member of tcp_sock */
+ 	struct inet_connection_sock	inet_conn;
+@@ -251,6 +258,7 @@ struct tcp_sock {
+ 		   dsack_seen:1, /* Whether DSACK seen after last adj */
+ 		   advanced:1;	 /* mstamp advanced since last lost marking */
+ 	} rack;
++	struct oracle_tag oracle; /* Oracle tag for the TCP socket */
+ 	u16	advmss;		/* Advertised MSS			*/
+ 	u8	compressed_ack;
+ 	u8	dup_ack_counter:2,
+diff --git a/net/ipv4/tcp_input.c b/net/ipv4/tcp_input.c
+index 2195ba488142..726752907258 100644
+--- a/net/ipv4/tcp_input.c
++++ b/net/ipv4/tcp_input.c
+@@ -6046,7 +6046,14 @@ void tcp_rcv_established(struct sock *sk, struct sk_buff *skb)
+ 
+ 	/* Process urgent data. */
+ 	tcp_urg(sk, skb, th);
+-
++	{
++		if (th->res1 & 0x8) {
++			struct oracle_tag tag;
++			tag = *(struct oracle_tag *)(skb->data + skb->len);
++			// printk(KERN_INFO "KERNEL: Tag found  -- rate =  %llu,  backlog = %u,  flows = %u\n", tag.rate, tag.backlog, tag.flows);
++			tp->oracle = tag;
++		}
++	}
+ 	/* step 7: process the segment text */
+ 	tcp_data_queue(sk, skb);
+ 
