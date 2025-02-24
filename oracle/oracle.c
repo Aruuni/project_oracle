@@ -11,23 +11,22 @@
 #include <linux/string.h>
 // TODO: find out if i can get rid of this, i don't like it here, it sucks
 
-
-
-struct tbf_sched_data {
+struct tbf_sched_data
+{
 	/* Parameters */
-		u32		limit;		/* Maximal length of backlog: bytes */
-		u32		max_size;
-		s64		buffer;		/* Token bucket depth/rate: MUST BE >= MTU/B */
-		s64		mtu;
-		struct psched_ratecfg rate;
-		struct psched_ratecfg peak;
-	
+	u32 limit; /* Maximal length of backlog: bytes */
+	u32 max_size;
+	s64 buffer; /* Token bucket depth/rate: MUST BE >= MTU/B */
+	s64 mtu;
+	struct psched_ratecfg rate;
+	struct psched_ratecfg peak;
+
 	/* Variables */
-		s64	tokens;			/* Current number of B tokens */
-		s64	ptokens;		/* Current number of P tokens */
-		s64	t_c;			/* Time check-point */
-		struct Qdisc	*qdisc;		/* Inner qdisc, default - bfifo queue */
-		struct qdisc_watchdog watchdog;	/* Watchdog timer */
+	s64 tokens;						/* Current number of B tokens */
+	s64 ptokens;					/* Current number of P tokens */
+	s64 t_c;						/* Time check-point */
+	struct Qdisc *qdisc;			/* Inner qdisc, default - bfifo queue */
+	struct qdisc_watchdog watchdog; /* Watchdog timer */
 };
 
 // struct oracle_tag {
@@ -36,13 +35,13 @@ struct tbf_sched_data {
 // 	u32 flows;
 // };
 
-struct oracle_sched_data{
-	u64 txBytes;
-	u64 rate;
+struct oracle_sched_data
+{
+	u64 	txBytes;
+	u64		rate;
+	u32		limit;
 
 };
-
-
 
 /* Updated init function: added netlink_ext_ack *extack parameter */
 static int oracle_init(struct Qdisc *sch, struct nlattr *opt,
@@ -54,25 +53,22 @@ static int oracle_init(struct Qdisc *sch, struct nlattr *opt,
 	struct oracle_sched_data *q = qdisc_priv(sch);
 
 	parent_qdisc = rcu_dereference(sch->dev_queue->qdisc);
-	if (sch->parent) 
+	if (sch->parent)
 		parentops = rcu_dereference(parent_qdisc->ops);
 	else
 		goto noparent;
 
-
 	if (!strcmp(parentops->id, "tbf") == 0)
-		goto noparent; 
-		
-		// printk(KERN_INFO "MODULE: Type of tbf_data->rate: %zu\n", tbf_data->rate.rate_bytes_ps);
-		// printk(KERN_INFO "MODULE: Parent TBF limit: %u\n", tbf_data->rate);
-		
-		// printk(KERN_INFO "MODULE: Parent TBF id: %s\n", parentops->id);
+		goto noparent;
+
+	// printk(KERN_INFO "MODULE: Type of tbf_data->rate: %zu\n", tbf_data->rate.rate_bytes_ps);
+	// printk(KERN_INFO "MODULE: Parent TBF limit: %u\n", tbf_data->rate);
+
+	// printk(KERN_INFO "MODULE: Parent TBF id: %s\n", parentops->id);
 	tbf_data = qdisc_priv(parent_qdisc);
 	q->rate = tbf_data->rate.rate_bytes_ps;
-	
-	//printk(KERN_INFO "MODULE: Parent TBF identified and rate set to : %u \n", tbf_data->rate.rate_bytes_ps);
-
-
+	q->limit = tbf_data->limit;
+	// printk(KERN_INFO "MODULE: Parent TBF identified and rate set to : %u \n", tbf_data->rate.rate_bytes_ps);
 
 	qdisc_reset(sch);
 	return 0;
@@ -97,14 +93,9 @@ static struct sk_buff *oracle_peek(struct Qdisc *sch)
 	return qdisc_peek_head(sch);
 }
 
-static struct sk_buff *oracle_dequeue(struct Qdisc *sch)
-{
 
 
 
-	return qdisc_dequeue_head(sch);
-
-}
 
 static netdev_tx_t oracle_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct sk_buff **to_free)
 {
@@ -113,33 +104,40 @@ static netdev_tx_t oracle_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct
 	struct iphdr *iph;
 	struct tcphdr *tcph;
 	struct oracle_tag *tag;
-	if (skb_shared(skb)) {
+
+	if (unlikely(sch->qstats.backlog + qdisc_pkt_len(skb) > q->limit))
+		return qdisc_drop(skb, sch, to_free);
+
+	if (skb_shared(skb))
+	{
 		skb = skb_unshare(skb, GFP_ATOMIC);
-		if (!skb) {
+		if (!skb)
+		{
 			printk(KERN_INFO "Failed to unshare skb\n");
 			sch->qstats.drops++;
 			return NET_XMIT_DROP;
 		}
 	}
-	
-    if (!skb) {
+
+	if (!skb)
+	{
 		printk(KERN_INFO "MODULE: NOT SKPBBBBBB \n");
-        goto fail;
-    }
-	if (skb_tailroom(skb) < sizeof(struct oracle_tag)){
+		goto fail;
+	}
+	if (skb_tailroom(skb) < sizeof(struct oracle_tag))
+	{
 		nskb = skb_copy_expand(skb, skb_headroom(skb), sizeof(struct oracle_tag), GFP_ATOMIC);
 		if (!nskb)
 		{
 			printk(KERN_INFO "MODULE: !nskb failed \n");
 			sch->qstats.drops++;
 			kfree_skb(skb);
-			return NET_XMIT_DROP; 
+			return NET_XMIT_DROP;
 		}
 		kfree_skb(skb);
 		skb = nskb;
 	}
 
-	
 	iph = ip_hdr(skb);
 	tcph = tcp_hdr(skb);
 	tcph->res1 |= 0x8;
@@ -148,14 +146,12 @@ static netdev_tx_t oracle_enqueue(struct sk_buff *skb, struct Qdisc *sch, struct
 	tag->rate = q->rate;
 	tag->backlog = qdisc_qlen(sch);
 	tag->flows = 2;
-	
-	
-	//print_hex_dump(KERN_INFO, "MODULE: Packet Data: ", DUMP_PREFIX_OFFSET, 16, 1, skb->data, skb->len, true);
-	//printk(KERN_INFO "MODULE: skb after expansion, len: %u\n", skb->len);
 
+	// print_hex_dump(KERN_INFO, "MODULE: Packet Data: ", DUMP_PREFIX_OFFSET, 16, 1, skb->data, skb->len, true);
+	// printk(KERN_INFO "MODULE: skb after expansion, len: %u\n", skb->len);
 
 	return qdisc_enqueue_tail(skb, sch);
-fail: 
+fail:
 	printk(KERN_INFO "MODULE: check failed");
 	return qdisc_enqueue_tail(skb, sch);
 }
@@ -165,7 +161,7 @@ static struct Qdisc_ops oracle_qdisc_ops __read_mostly = {
 	.priv_size = sizeof(struct oracle_sched_data),
 	.init = oracle_init,
 	.enqueue = oracle_enqueue,
-	.dequeue = oracle_dequeue,
+	.dequeue = qdisc_dequeue_head, /* might not need a custom dequeue */
 	.peek = oracle_peek,
 	.reset = oracle_reset,
 	.destroy = oracle_destroy,
