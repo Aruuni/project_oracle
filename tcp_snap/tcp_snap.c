@@ -108,7 +108,7 @@ static void snap_set_pacing_rate(struct sock *sk)
 	if (unlikely(!snap->has_seen_rtt && tp->srtt_us))
 		snap_init_pacing_rate_from_rtt(sk);
     // maybe optimise with flow scaling???? idk yet 
-    printk(KERN_INFO "MODULE: snap_set_pacing_rate: flows: %u  rate %u", snap->flows, rate /  max(1, snap->flows));  
+    // printk(KERN_INFO "MODULE: snap_set_pacing_rate: flows: %u  rate %u", snap->flows, rate /  max(1, snap->flows));  
     sk->sk_pacing_rate = rate /  max(1, snap->flows);
 }
 
@@ -181,7 +181,7 @@ static void snap_cong_control(struct sock *sk,
 
     pkts = snap->oracle_rate_bps /  (tp->mss_cache + sizeof(struct oracle_tag)); 
 
-    printk(KERN_INFO "MODULE: cwnd: %u, oracle_rate: %llu, oracle_flows: %u, pkts: %llu", tp->snd_cwnd, snap->oracle_rate_bps, snap->flows, pkts);
+    //printk(KERN_INFO "MODULE: cwnd: %u, oracle_rate: %llu, oracle_flows: %u, pkts: %llu", tp->snd_cwnd, snap->oracle_rate_bps, snap->flows, pkts);
     snap_update_cwnd(sk, pkts);
     snap_set_pacing_rate(sk);
     //   printk(KERN_INFO
