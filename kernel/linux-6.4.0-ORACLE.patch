@@ -4,7 +4,7 @@ index 40e08abc6aa1..48d3ff74bd28 100644
 +++ b/include/linux/tcp.h
 @@ -1,4 +1,4 @@
 -/* SPDX-License-Identifier: GPL-2.0-or-later */
-+:/* SPDX-License-Identifier: GPL-2.0-or-later */
++/* SPDX-License-Identifier: GPL-2.0-or-later  */
  /*
   * INET		An implementation of the TCP/IP protocol suite for the LINUX
   *		operating system.  INET is implemented using the  BSD Socket
